@@ -1,0 +1,38 @@
+name: WipeTogether
+version: '@project.version@'
+main: com.wipetogether.WipeTogetherIntegrated
+api-version: '1.21.4'
+description: A hardcore reset plugin for teams playing hardcore. One death starts a fresh world for everyone.
+
+commands:
+  resetruns:
+    description: Sets the displayed run number to 1 without resetting worlds or deaths.
+    permission: wipetogether.admin
+    usage: /<command>
+  setrun:
+    description: Sets the displayed run number without resetting the world.
+    permission: wipetogether.admin
+    usage: /<command> <number>
+  setdeaths:
+    description: Sets an online or known offline player's death count.
+    permission: wipetogether.admin
+    usage: /<command> <player> <number>
+  resetworld:
+    description: Starts a fresh world with the reset countdown and preserves run and death counts.
+    permission: wipetogether.admin
+    usage: /<command>
+  resetdeaths:
+    description: Resets the death table and scoreboard scores to zero.
+    permission: wipetogether.admin
+    permission-message: 'You do not have permission to run this command (wipetogether.admin).'
+    usage: /<command>
+
+permissions:
+  wipetogether.admin:
+    description: Allows managing hardcore worlds, run numbers, and death counts.
+    default: op
+  hardcorereset.admin:
+    description: Legacy permission alias for existing installations.
+    default: false
+    children:
+      wipetogether.admin: true

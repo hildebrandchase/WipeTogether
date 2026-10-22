@@ -1,0 +1,25 @@
+# ================================================================
+# WIPETOGETHER — TEAM HARDCORE RESET CONFIGURATION
+# ================================================================
+
+settings:
+  # Prefix for active worlds
+  world-prefix: "wipetogether_world_"
+
+  # Prefix for the standby world kept preloaded
+  standby-prefix: "wipetogether_standby_"
+
+  # Exact number of seconds in the dramatic countdown after a death
+  countdown-seconds: 3
+
+  # Delay after teleporting before pregenerating the next standby world.
+  # Helps reduce CPU spikes while players load the new chunks.
+  cooldown-before-standby-prep-seconds: 15
+
+# Internal cycle state (updated automatically while the server is running)
+state:
+  current-cycle: 1
+  active-world: "world"
+
+# Persistent death records by UUID
+deaths: {}
