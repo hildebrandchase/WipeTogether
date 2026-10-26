@@ -1,10 +1,21 @@
-target/
-.idea/
-*.iml
-*.log
-.DS_Store
-.vscode/
+# Build output and downloaded plugin/server binaries
+/target/
 *.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# Local development server (worlds, player data, and server configuration)
+/test-server/
+
+# IDE and operating-system files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Logs and local environment settings
+*.log
 .env
 .env.*
 !.env.example
