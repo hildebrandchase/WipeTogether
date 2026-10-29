@@ -4,7 +4,7 @@
 
 One death. A new world. Together.
 
-> **Development update:** This branch prepares the unreleased **1.2.1** update after the initial **1.2.0** release. Source on this branch may be ahead of published downloads; download the version you want from Releases or build this branch yourself.
+> **Latest GitHub release: [WipeTogether 1.2.1](https://github.com/hildebrandchase/WipeTogether/releases/tag/v1.2.1)** — native hardcore mode, the vanilla death screen, and configurable titles and messages. Download the plugin JAR from the release's Assets section.
 
 WipeTogether turns cooperative hardcore into a sequence of shared attempts: a death starts a countdown, moves everyone to a new random seed, and resets player progress. Death counts and completed-run records survive between attempts.
 

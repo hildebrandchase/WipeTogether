@@ -1,6 +1,6 @@
-# WipeTogether 1.2.1 — release notes draft
+# WipeTogether 1.2.1 — release notes
 
-Status: **unreleased working update after the initial 1.2.0 release**. These notes are prepared for the maintainer to publish on GitHub/Hangar; the presence of this file does not mean a release has been published.
+Status: **published on GitHub on October 29, 2026**: [release and downloads](https://github.com/hildebrandchase/WipeTogether/releases/tag/v1.2.1). The release includes the plugin JAR and a SHA-256 checksum. Publication of 1.2.1 on Hangar or other sites is not yet confirmed; the remaining notes can be reused when publishing there.
 
 ## Native hardcore mode
 

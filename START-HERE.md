@@ -33,4 +33,4 @@ Run tests through Maven: the build configures the Mockito Java agent for the tes
 
 Use a complete server restart after replacing the plugin. Back up the test server before exercises that delete run worlds. Keep one plugin JAR installed, including when upgrading from HardcoreReset.
 
-The current 1.2.1 work is unreleased. See [the settings guide](docs/SETTINGS.md) for customization and [draft release notes](docs/RELEASE-NOTES-1.2.1.md) when preparing publication.
+Version 1.2.1 is [released on GitHub](https://github.com/hildebrandchase/WipeTogether/releases/tag/v1.2.1). See [the settings guide](docs/SETTINGS.md) for customization and [release notes](docs/RELEASE-NOTES-1.2.1.md) for the changes and publication status on other sites.

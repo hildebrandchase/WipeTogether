@@ -1,8 +1,8 @@
 # Changelog
 
-## 1.2.1 — Unreleased
+## 1.2.1 — 2026-10-29
 
-This is the working update after the initial 1.2.0 release. Publication is pending maintainer confirmation.
+Published on [GitHub Releases](https://github.com/hildebrandchase/WipeTogether/releases/tag/v1.2.1). Publication of this version on Hangar or other sites is not yet confirmed.
 
 ### Configurable presentation
 
