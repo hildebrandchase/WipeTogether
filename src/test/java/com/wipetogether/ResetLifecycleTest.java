@@ -31,6 +31,7 @@ import org.bukkit.event.entity.EntityPortalEnterEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+
 import org.bukkit.entity.EnderDragon;
 import org.bukkit.entity.Firework;
 import org.bukkit.advancement.Advancement;
@@ -352,13 +353,14 @@ class ResetLifecycleTest {
         verify(victim).playSound(any(Location.class), eq(Sound.BLOCK_NOTE_BLOCK_PLING), eq(1f), eq(0.8f));
         verify(victim).playSound(any(Location.class), eq(Sound.BLOCK_NOTE_BLOCK_PLING), eq(1f), eq(1.1f));
         verify(victim).playSound(any(Location.class), eq(Sound.BLOCK_NOTE_BLOCK_PLING), eq(1f), eq(1.4000001f));
-        ArgumentCaptor<Runnable> overlays = ArgumentCaptor.forClass(Runnable.class);
-        verify(scheduler, times(3)).runTaskLater(eq(plugin), overlays.capture(), eq(1L));
-        for (Runnable overlay : overlays.getAllValues()) overlay.run();
-        var overlayTimes = Title.Times.times(java.time.Duration.ZERO, java.time.Duration.ofMillis(900), java.time.Duration.ofMillis(100));
-        verify(victim).showTitle(Title.title(Component.text("YOU DIED!"), Component.text("New world in 3..."), overlayTimes));
-        verify(teammate).showTitle(Title.title(Component.text("Alex DIED"), Component.text("New world in 3..."), overlayTimes));
-        verify(victim).showTitle(Title.title(Component.text("YOU DIED!"), Component.text("New world in 1..."), overlayTimes));
+        ArgumentCaptor<Title> teammateTitles = ArgumentCaptor.forClass(Title.class);
+        verify(teammate, times(3)).showTitle(teammateTitles.capture());
+        for (int i = 0; i < 3; i++) {
+            assertEquals("Alex DIED", plain(teammateTitles.getAllValues().get(i).title()));
+            assertEquals("New world in " + (3 - i) + "...", plain(teammateTitles.getAllValues().get(i).subtitle()));
+        }
+        // Configured titles must not be overwritten by a hardcoded next-tick overlay.
+        verify(scheduler, never()).runTaskLater(eq(plugin), any(Runnable.class), eq(1L));
     }
 
     @Test
@@ -404,7 +406,7 @@ class ResetLifecycleTest {
         AdminCommands.execute(plugin, admin(), "setrun", new String[]{"12"});
         assertEquals(12, get("currentCycle"));
         assertEquals(12, config.getInt("state.current-cycle"));
-        verify(objective).displayName(Component.text("DEATHS - RUN #12", NamedTextColor.RED, TextDecoration.BOLD));
+        verify(objective).displayName(argThat((Component text) -> plain(text).equals("DEATHS - RUN #12")));
         AdminCommands.execute(plugin, admin(), "resetruns", new String[]{});
         assertEquals(1, get("currentCycle"));
         assertEquals("world", get("activeWorldName"));
@@ -786,6 +788,348 @@ class ResetLifecycleTest {
         assertEquals(4, plugin.currentCycle());
         assertTrue(AdminCommands.execute(plugin, admin(), "setrun", new String[]{"5"}));
         assertEquals(5, plugin.currentCycle());
+    }
+
+    @Test
+    void freshWorldsAreHardcoreEvenWhenPreviousWorldWasNot() {
+        when(original.isHardcore()).thenReturn(false);
+        when(original.getDifficulty()).thenReturn(Difficulty.NORMAL);
+        FreshRun run = FreshRun.create(plugin, "hardcore_standby_", 1, original);
+        assertEquals(3, creations.size());
+        assertTrue(creations.stream().allMatch(WorldCreator::hardcore));
+        for (World world : List.of(run.overworld(), run.nether(), run.end())) {
+            verify(world).setGameRule(GameRule.DO_IMMEDIATE_RESPAWN, false);
+            verify(world, never()).setGameRule(GameRule.DO_IMMEDIATE_RESPAWN, true);
+            var order = inOrder(world);
+            order.verify(world).setHardcore(true);
+            order.verify(world).setDifficulty(Difficulty.HARD);
+            order.verify(world).save();
+        }
+    }
+
+    @Test
+    void startupRepairsExistingRunAndFallbackWorldsWithoutReplacingRun() {
+        World active = world("saved_run", 987L, World.Environment.NORMAL);
+        World nether = world("saved_run_nether", 987L, World.Environment.NETHER);
+        World end = world("saved_run_the_end", 987L, World.Environment.THE_END);
+        worlds.put(active.getName(), active);
+        worlds.put(nether.getName(), nether);
+        worlds.put(end.getName(), end);
+        set("activeWorldName", active.getName());
+        config.set("state.active-nether", nether.getName());
+        config.set("state.active-end", end.getName());
+        config.set("wins.old.run", 5);
+        call("initializeWorldState");
+        for (World world : List.of(original, active, nether, end)) {
+            verify(world).setHardcore(true);
+            verify(world).setDifficulty(Difficulty.HARD);
+            verify(world).setGameRule(GameRule.DO_IMMEDIATE_RESPAWN, false);
+            verify(world).save();
+        }
+        assertEquals("saved_run", plugin.activeWorldName());
+        assertEquals(987L, active.getSeed());
+        assertEquals(5, config.getInt("wins.old.run"));
+        assertTrue(creations.isEmpty());
+    }
+
+    @Test
+    void deadHardcorePlayerRespawnsAndReturnsToSurvivalInNewRun() {
+        when(original.isHardcore()).thenReturn(true);
+        FreshRun run = FreshRun.create(plugin, "hardcore_standby_", 1, original);
+        set("standby", run);
+        set("standbyWorldName", run.name());
+        Player victim = player(original);
+        AtomicBoolean dead = new AtomicBoolean(true);
+        when(victim.isDead()).thenAnswer(i -> dead.get());
+        Player.Spigot spigot = mock(Player.Spigot.class);
+        when(victim.spigot()).thenReturn(spigot);
+        doAnswer(i -> { dead.set(false); return null; }).when(spigot).respawn();
+        bukkit.when(Bukkit::getOnlinePlayers).thenReturn(List.of(victim));
+        call("executeHotWorldMigration");
+        var order = inOrder(spigot, victim);
+        order.verify(spigot).respawn();
+        order.verify(victim).teleport(argThat((Location location) -> location.getWorld().equals(run.overworld())));
+        order.verify(victim).setGameMode(GameMode.SURVIVAL);
+        assertEquals(run.name(), plugin.activeWorldName());
+        assertFalse(plugin.resetInProgress());
+        verify(victim.getInventory()).clear();
+    }
+
+    @Test
+    void titleScreenDisconnectThenLaterJoinStartsCurrentRunInSurvival() throws Exception {
+        checkOfflineHardcoreReturn(false);
+    }
+
+    @Test
+    void spectateDisconnectThenLaterJoinStartsCurrentRunInSurvival() throws Exception {
+        checkOfflineHardcoreReturn(true);
+    }
+
+    private void checkOfflineHardcoreReturn(boolean spectated) throws Exception {
+        idle();
+        Player victim = player(original);
+        var currentWorld = new java.util.concurrent.atomic.AtomicReference<>(original);
+        var mode = new java.util.concurrent.atomic.AtomicReference<>(GameMode.SURVIVAL);
+        AtomicBoolean dead = new AtomicBoolean(true);
+        AtomicBoolean online = new AtomicBoolean(true);
+        when(victim.getWorld()).thenAnswer(i -> currentWorld.get());
+        when(victim.getGameMode()).thenAnswer(i -> mode.get());
+        when(victim.isDead()).thenAnswer(i -> dead.get());
+        when(victim.isOnline()).thenAnswer(i -> online.get());
+        doAnswer(i -> { mode.set(i.getArgument(0)); return null; }).when(victim).setGameMode(any(GameMode.class));
+        when(victim.teleport(any(Location.class))).thenAnswer(i -> {
+            currentWorld.set(((Location)i.getArgument(0)).getWorld());
+            return true;
+        });
+        Player.Spigot spigot = mock(Player.Spigot.class);
+        when(victim.spigot()).thenReturn(spigot);
+        doAnswer(i -> { dead.set(false); return null; }).when(spigot).respawn();
+        String marker = "players." + victim.getUniqueId() + ".run-world";
+        config.set(marker, original.getName());
+        org.bukkit.event.entity.PlayerDeathEvent death = mock(org.bukkit.event.entity.PlayerDeathEvent.class);
+        when(death.getPlayer()).thenReturn(victim);
+        when(death.getDrops()).thenReturn(new ArrayList<>());
+        plugin.onPlayerDeath(death);
+
+        if (spectated) {
+            PlayerRespawnEvent respawn = mock(PlayerRespawnEvent.class);
+            Location respawnLocation = original.getSpawnLocation();
+            when(respawn.getRespawnLocation()).thenReturn(respawnLocation);
+            plugin.onRespawn(respawn);
+            // Vanilla completes the Spectate World choice after its respawn event.
+            dead.set(false);
+            victim.setGameMode(GameMode.SPECTATOR);
+            assertEquals(GameMode.SPECTATOR, victim.getGameMode());
+            verify(victim, never()).setGameMode(GameMode.SURVIVAL);
+        }
+
+        // Title Screen disconnects while still dead; Spectate -> disconnect leaves
+        // a living spectator. Neither player is online when the next run commits.
+        online.set(false);
+        bukkit.when(Bukkit::getOnlinePlayers).thenReturn(List.of());
+        call("executeHotWorldMigration");
+        String newRun = plugin.activeWorldName();
+        assertNotEquals(original.getName(), newRun);
+        assertEquals(original.getName(), config.getString(marker));
+        verify(victim.getInventory(), never()).clear();
+        verify(spigot, never()).respawn();
+
+        // Reload real YAML to check that the old-run marker survives a later login,
+        // including a server restart while the player is disconnected.
+        Path saved = root.resolve("saved-player-state.yml");
+        ConfigStore.save(saved, config.saveToString());
+        config = ConfigStore.load(saved, null);
+        doReturn(config).when(plugin).getConfig();
+        online.set(true);
+        bukkit.when(Bukkit::getOnlinePlayers).thenReturn(List.of(victim));
+        plugin.onPlayerJoin(new org.bukkit.event.player.PlayerJoinEvent(victim, (Component)null));
+
+        var order = inOrder(victim);
+        order.verify(victim).teleport(argThat((Location location) -> location.getWorld().getName().equals(newRun)));
+        order.verify(victim).setGameMode(GameMode.SURVIVAL);
+        assertEquals(GameMode.SURVIVAL, victim.getGameMode());
+        assertFalse(victim.isDead());
+        assertEquals(newRun, victim.getWorld().getName());
+        assertEquals(newRun, config.getString(marker));
+        assertEquals(1, config.getInt("deaths." + victim.getUniqueId() + ".count"));
+        verify(spigot, times(spectated ? 0 : 1)).respawn();
+        verify(victim.getInventory()).clear();
+        verify(victim.getEnderChest()).clear();
+        verify(victim).setLevel(0);
+
+        // Another reconnect within the same new run must not reset progress again.
+        plugin.onPlayerJoin(new org.bukkit.event.player.PlayerJoinEvent(victim, (Component)null));
+        verify(victim.getInventory(), times(1)).clear();
+    }
+
+    @Test
+    void spectatorRejoiningBeforeCountdownEndsWaitsForNewWorldToBecomeSurvival() {
+        Player spectator = player(original);
+        var currentWorld = new java.util.concurrent.atomic.AtomicReference<>(original);
+        var mode = new java.util.concurrent.atomic.AtomicReference<>(GameMode.SPECTATOR);
+        when(spectator.getWorld()).thenAnswer(i -> currentWorld.get());
+        when(spectator.getGameMode()).thenAnswer(i -> mode.get());
+        doAnswer(i -> { mode.set(i.getArgument(0)); return null; }).when(spectator).setGameMode(any(GameMode.class));
+        when(spectator.teleport(any(Location.class))).thenAnswer(i -> {
+            currentWorld.set(((Location)i.getArgument(0)).getWorld());
+            return true;
+        });
+        config.set("players." + spectator.getUniqueId() + ".run-world", original.getName());
+        plugin.onPlayerJoin(new org.bukkit.event.player.PlayerJoinEvent(spectator, (Component)null));
+        assertEquals(GameMode.SPECTATOR, spectator.getGameMode());
+        verify(spectator, never()).setGameMode(GameMode.SURVIVAL);
+        verify(spectator.getInventory(), never()).clear();
+        bukkit.when(Bukkit::getOnlinePlayers).thenReturn(List.of(spectator));
+        call("executeHotWorldMigration");
+        assertEquals(plugin.activeWorldName(), spectator.getWorld().getName());
+        assertEquals(GameMode.SURVIVAL, spectator.getGameMode());
+        var order = inOrder(spectator);
+        order.verify(spectator).teleport(any(Location.class));
+        order.verify(spectator).setGameMode(GameMode.SURVIVAL);
+        verify(spectator.getInventory()).clear();
+    }
+
+    @Test
+    void failedReturningSpectatorTeleportDoesNotClearOldRunMarkerOrInventory() {
+        World active = world("new_run", 987L, World.Environment.NORMAL);
+        worlds.put(active.getName(), active);
+        set("activeWorldName", active.getName());
+        Player spectator = player(original);
+        when(spectator.getGameMode()).thenReturn(GameMode.SPECTATOR);
+        when(spectator.teleport(any(Location.class))).thenReturn(false);
+        String marker = "players." + spectator.getUniqueId() + ".run-world";
+        config.set(marker, original.getName());
+        plugin.onPlayerJoin(new org.bukkit.event.player.PlayerJoinEvent(spectator, (Component)null));
+        assertEquals(original.getName(), config.getString(marker));
+        verify(spectator, never()).setGameMode(GameMode.SURVIVAL);
+        verify(spectator.getInventory(), never()).clear();
+        verify(scheduler).runTaskLater(eq(plugin), any(Runnable.class), eq(20L));
+        when(spectator.teleport(any(Location.class))).thenReturn(true);
+        plugin.onPlayerJoin(new org.bukkit.event.player.PlayerJoinEvent(spectator, (Component)null));
+        assertEquals(active.getName(), config.getString(marker));
+        verify(spectator).setGameMode(GameMode.SURVIVAL);
+        verify(spectator.getInventory()).clear();
+    }
+
+    @Test
+    void customCountdownTitlesReachVictimTeammateAndManualReset() throws Exception {
+        set("countdownSeconds", 3);
+        YamlConfiguration text = new YamlConfiguration();
+        text.set("titles.countdown-victim.title", "<aqua><victim> down!</aqua>");
+        text.set("titles.countdown-teammate.title", "<green>Help <victim></green>");
+        text.set("titles.countdown-manual.title", "<gold>New run <run></gold>");
+        set("messages", Messages.from(text, warning -> fail(warning)));
+        Player victim = player(original);
+        Player teammate = player(original);
+        bukkit.when(Bukkit::getOnlinePlayers).thenReturn(List.of(victim, teammate));
+        Method countdown = WipeTogether.class.getDeclaredMethod("startResetCountdownSequence", Player.class);
+        countdown.setAccessible(true);
+        countdown.invoke(plugin, victim);
+        ArgumentCaptor<Runnable> tasks = ArgumentCaptor.forClass(Runnable.class);
+        verify(scheduler).runTaskTimer(eq(plugin), tasks.capture(), eq(0L), eq(20L));
+        tasks.getValue().run();
+        verify(victim).showTitle(argThat((Title title) -> plain(title.title()).equals("Alex down!")));
+        verify(teammate).showTitle(argThat((Title title) -> plain(title.title()).equals("Help Alex")));
+        idle();
+        assertTrue(plugin.beginManualReset());
+        verify(scheduler, times(2)).runTaskTimer(eq(plugin), tasks.capture(), eq(0L), eq(20L));
+        tasks.getValue().run();
+        verify(victim).showTitle(argThat((Title title) -> plain(title.title()).equals("New run 1")));
+        verify(teammate).showTitle(argThat((Title title) -> plain(title.title()).equals("New run 1")));
+    }
+
+    @Test
+    void disablingWelcomeTitleDoesNotPreventWorldMigrationOrInventoryReset() {
+        YamlConfiguration text = new YamlConfiguration();
+        text.set("titles.welcome.enabled", false);
+        set("messages", Messages.from(text, warning -> fail(warning)));
+        Player player = player(original);
+        bukkit.when(Bukkit::getOnlinePlayers).thenReturn(List.of(player));
+        call("executeHotWorldMigration");
+        assertNotEquals("world", plugin.activeWorldName());
+        assertFalse(plugin.resetInProgress());
+        verify(player.getInventory()).clear();
+        verify(player).setGameMode(GameMode.SURVIVAL);
+        verify(player, never()).showTitle(any(Title.class));
+    }
+
+    @Test
+    void disablingVictoryPresentationStillRecordsWinAndFinalTime() {
+        idle();
+        activeEnd();
+        config.set("state.dragon-defeated-world", "world_the_end");
+        config.set("state.run-elapsed-millis", 125000L);
+        YamlConfiguration text = new YamlConfiguration();
+        text.set("titles.victory.enabled", false);
+        text.set("chat.victory", "");
+        set("messages", Messages.from(text, warning -> fail(warning)));
+        Player player = player(original);
+        bukkit.when(Bukkit::getOnlinePlayers).thenReturn(List.of(player));
+        new VictoryEvents(plugin).complete(player);
+        assertEquals(125000L, config.getLong("wins.world.duration-millis"));
+        assertEquals("world", config.getString("state.completed-world"));
+        verify(player, never()).showTitle(any(Title.class));
+        bukkit.verify(() -> Bukkit.broadcast(any(Component.class)), never());
+        verify(scheduler).runTaskLater(eq(plugin), any(Runnable.class), eq(40L));
+    }
+
+    @Test
+    void customCommandFeedbackDoesNotChangePermissionsOrCommandBehavior() {
+        idle();
+        YamlConfiguration text = new YamlConfiguration();
+        text.set("commands.run-set", "<gold>Attempt <run></gold>");
+        text.set("commands.no-permission", "<red>Denied by owner</red>");
+        set("messages", Messages.from(text, warning -> fail(warning)));
+        CommandSender sender = admin();
+        AdminCommands.execute(plugin, sender, "setrun", new String[]{"8"});
+        assertEquals(8, plugin.currentCycle());
+        verify(sender).sendMessage(argThat((Component message) -> plain(message).equals("Attempt 8")));
+        CommandSender stranger = mock(CommandSender.class);
+        AdminCommands.execute(plugin, stranger, "setrun", new String[]{"99"});
+        assertEquals(8, plugin.currentCycle());
+        verify(stranger).sendMessage(argThat((Component message) -> plain(message).equals("Denied by owner")));
+    }
+
+    @Test
+    void customTabMessagesUseFrozenTimeAndCompletionFooter() {
+        YamlConfiguration text = new YamlConfiguration();
+        text.set("tab.header", "<aqua>Run <run>: <time></aqua>");
+        text.set("tab.footer-complete", "<green>Finished!</green>");
+        set("messages", Messages.from(text, warning -> fail(warning)));
+        config.set("state.completed-world", "world");
+        config.set("state.completion-millis", 123000L);
+        Player player = player(original);
+        bukkit.when(Bukkit::getOnlinePlayers).thenReturn(List.of(player));
+        WipeTogetherTimerIntegrated.bootstrap(plugin);
+        ArgumentCaptor<Runnable> timer = ArgumentCaptor.forClass(Runnable.class);
+        verify(scheduler).runTaskTimer(eq(plugin), timer.capture(), eq(0L), eq(20L));
+        timer.getValue().run();
+        verify(player).sendPlayerListHeaderAndFooter(
+                argThat(header -> plain(header).equals("Run 1: 02:03")),
+                argThat(footer -> plain(footer).equals("Finished!")));
+    }
+
+    @Test
+    void malformedMessagesStopsStartupWithoutTouchingSavedGameData() throws Exception {
+        Path data = Files.createDirectory(root.resolve("WipeTogether"));
+        String broken = "titles: [unterminated\n";
+        Files.writeString(data.resolve("messages.yml"), broken);
+        String saved = "state:\n  active-world: important_run\n";
+        Files.writeString(data.resolve("config.yml"), saved);
+        doReturn(data.toFile()).when(plugin).getDataFolder();
+        org.bukkit.Server server = mock(org.bukkit.Server.class);
+        org.bukkit.plugin.PluginManager manager = mock(org.bukkit.plugin.PluginManager.class);
+        doReturn(server).when(plugin).getServer();
+        when(server.getPluginManager()).thenReturn(manager);
+        plugin.onEnable();
+        plugin.onDisable();
+        verify(manager).disablePlugin(plugin);
+        verify(manager, never()).registerEvents(any(), any());
+        verify(plugin, never()).saveConfig();
+        assertTrue(creations.isEmpty());
+        assertEquals(saved, Files.readString(data.resolve("config.yml")));
+        assertEquals(broken, Files.readString(data.resolve("messages.yml")));
+    }
+
+    @Test
+    void startupAppliesConfiguredPermissionMessageToBukkitCommands() throws Exception {
+        Path data = Files.createDirectory(root.resolve("WipeTogether"));
+        Files.writeString(data.resolve("messages.yml"), "commands:\n  no-permission: '<red>Team admins only</red>'\n");
+        doReturn(data.toFile()).when(plugin).getDataFolder();
+        doReturn(getClass().getResourceAsStream("/config.yml")).when(plugin).getResource("config.yml");
+        org.bukkit.Server server = mock(org.bukkit.Server.class);
+        org.bukkit.plugin.PluginManager manager = mock(org.bukkit.plugin.PluginManager.class);
+        org.bukkit.command.PluginCommand command = mock(org.bukkit.command.PluginCommand.class);
+        doReturn(server).when(plugin).getServer();
+        when(server.getPluginManager()).thenReturn(manager);
+        doReturn(command).when(plugin).getCommand(anyString());
+        plugin.onEnable();
+        verify(manager, never()).disablePlugin(plugin);
+        verify(command, times(5)).permissionMessage(argThat(message -> plain(message).equals("Team admins only")));
+    }
+
+    private static String plain(Component text) {
+        return net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(text);
     }
 
     void set(String name, Object value) {

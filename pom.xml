@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.wipetogether</groupId>
     <artifactId>WipeTogether</artifactId>
-    <version>1.2.0</version>
+    <version>1.2.1</version>
     <name>WipeTogether</name>
     <description>A hardcore reset plugin for teams playing hardcore: one death starts a fresh world for everyone.
     </description>

@@ -54,13 +54,14 @@ record FreshRun(String name, long seed, World overworld, World nether, World end
         if (Bukkit.getWorld(name) != null || plugin.worldStorage().exists(name))
             throw new IllegalStateException("Refusing to reuse existing world: " + name);
         World world = new WorldCreator(name).environment(environment).type(WorldType.NORMAL)
-                .seed(seed).keepSpawnLoaded(TriState.FALSE).createWorld();
+                .seed(seed).hardcore(true).keepSpawnLoaded(TriState.FALSE).createWorld();
         if (world == null || world.getSeed() != seed || world.getEnvironment() != environment)
             throw new IllegalStateException("World creation or seed validation failed: " + name);
         world.setAutoSave(true);
-        world.setGameRule(GameRule.DO_IMMEDIATE_RESPAWN, true);
+        world.setHardcore(true);
+        world.setGameRule(GameRule.DO_IMMEDIATE_RESPAWN, false);
         world.setGameRule(GameRule.NATURAL_REGENERATION, true);
-        world.setDifficulty(previous == null ? Difficulty.HARD : previous.getDifficulty());
+        world.setDifficulty(Difficulty.HARD);
         // Paper 26.3 dimensions such as the Nether have no world clock.
         // Only the Overworld needs a fresh day/night and weather state.
         if (environment == World.Environment.NORMAL) {

@@ -1,7 +1,7 @@
 package com.wipetogether;
 
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import java.util.Map;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
@@ -33,11 +33,11 @@ public final class WipeTogetherTimerIntegrated {
         long elapsed = elapsedMillis(plugin);
         plugin.getConfig().set("state.run-elapsed-millis", elapsed);
         int cycle = plugin.currentCycle();
-        String header = "\u00a76\u00a7lHARDCORE RUN #" + cycle + "\n\u00a7fRun Time: \u00a7a" + formatTime(elapsed / 1000L);
+        Map<String, Object> values = Map.of("run", cycle, "time", formatTime(elapsed / 1000L));
+        Component header = plugin.messages().component("tab.header", values);
+        Component footer = plugin.messages().component(frozenMillis >= 0 ? "tab.footer-complete" : "tab.footer-running", values);
         for (Player player : Bukkit.getOnlinePlayers()) {
-            String footer = frozenMillis >= 0 ? "\u00a76\u00a7lHARDCORE COMPLETE!" : "\u00a77One death resets the run";
-            player.sendPlayerListHeaderAndFooter(LegacyComponentSerializer.legacySection().deserialize(header),
-                    LegacyComponentSerializer.legacySection().deserialize(footer));
+            player.sendPlayerListHeaderAndFooter(header, footer);
         }
     }
 

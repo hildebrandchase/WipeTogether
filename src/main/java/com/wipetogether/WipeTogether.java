@@ -17,16 +17,12 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
+
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import net.kyori.adventure.text.Component;
-
 import net.kyori.adventure.text.format.NamedTextColor;
 
-import net.kyori.adventure.text.format.TextDecoration;
-import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.GameRule;
@@ -87,6 +83,7 @@ public class WipeTogether
     private Scoreboard sharedScoreboard;
     private Objective deathsObjective;
     private YamlConfiguration configuration;
+    private Messages messages;
     private boolean initialized;
 
     public void onEnable() {
@@ -99,6 +96,7 @@ public class WipeTogether
             if (getServer().getPluginManager().getPlugin("HardcoreReset") != null)
                 throw new IllegalStateException("Remove the old HardcoreReset JAR before installing WipeTogether.");
             ConfigStore.migrateLegacy(getDataFolder().toPath());
+            messages = Messages.load(getDataFolder().toPath().resolve("messages.yml"), getLogger()::warning);
             this.setupConfigurationSafely();
             this.initializeWorldState();
         } catch (Exception error) {
@@ -114,6 +112,7 @@ public class WipeTogether
             if (command != null) {
                 command.setExecutor(this);
                 command.setTabCompleter(this);
+                command.permissionMessage(messages().component("commands.no-permission", java.util.Map.of()));
             }
         }
         getServer().getPluginManager().registerEvents(new VictoryEvents(this), this);
@@ -137,6 +136,10 @@ public class WipeTogether
     public FileConfiguration getConfig() {
         if (configuration == null) throw new IllegalStateException("Configuration has not loaded successfully");
         return configuration;
+    }
+
+    Messages messages() {
+        return messages == null ? Messages.defaults() : messages;
     }
 
     @Override
@@ -182,6 +185,13 @@ public class WipeTogether
 
     private void initializeWorldState() {
         serverDefaultName = Bukkit.getWorlds().getFirst().getName();
+        // Login sends the spawn world's hardcore flag before PlayerJoinEvent.
+        // Repair retained default worlds too: offline players can fall back to them.
+        for (World world : Bukkit.getWorlds()) {
+            String name = world.getName();
+            if (name.equals(serverDefaultName) || name.equals(serverDefaultName + "_nether")
+                    || name.equals(serverDefaultName + "_the_end")) configureHardcoreWorld(world);
+        }
         World active = Bukkit.getWorld(activeWorldName);
         if (active == null) {
             if (!worldStorage().hasSavedWorld(activeWorldName)) {
@@ -201,7 +211,7 @@ public class WipeTogether
                 saveConfig();
                 active = replacement.overworld();
             } else {
-                active = new WorldCreator(activeWorldName).environment(World.Environment.NORMAL).createWorld();
+                active = new WorldCreator(activeWorldName).environment(World.Environment.NORMAL).hardcore(true).createWorld();
             }
         }
         if (active == null || active.getEnvironment() != World.Environment.NORMAL) {
@@ -211,7 +221,7 @@ public class WipeTogether
         activeEndName = getConfig().getString("state.active-end", serverDefaultName + "_the_end");
         restoreDimension(activeNetherName, World.Environment.NETHER, active.getSeed());
         restoreDimension(activeEndName, World.Environment.THE_END, active.getSeed());
-        active.setGameRule(GameRule.DO_IMMEDIATE_RESPAWN, true);
+        configureHardcoreWorld(active);
         // Never trust an old numeric standby name after a restart or older plugin installation.
         // New run directories are chosen before creation and never reused for a later run.
         String abandoned = getConfig().getString("state.standby-world");
@@ -238,10 +248,23 @@ public class WipeTogether
     private void restoreDimension(String name, World.Environment environment, long seed) {
         worldPath(name); // Reject paths outside the server world container.
         World world = Bukkit.getWorld(name);
-        if (world == null) world = new WorldCreator(name).environment(environment).seed(seed).createWorld();
+        if (world == null) world = new WorldCreator(name).environment(environment).seed(seed).hardcore(true).createWorld();
         if (world == null || world.getEnvironment() != environment) {
             throw new IllegalStateException("Cannot restore dimension " + name);
         }
+        configureHardcoreWorld(world);
+    }
+
+    private void configureHardcoreWorld(World world) {
+        boolean changed = !world.isHardcore() || world.getDifficulty() != org.bukkit.Difficulty.HARD
+                || !Boolean.FALSE.equals(world.getGameRuleValue(GameRule.DO_IMMEDIATE_RESPAWN));
+        if (changed) {
+            world.setHardcore(true);
+            world.setDifficulty(org.bukkit.Difficulty.HARD);
+        }
+        // Keep the vanilla hardcore death screen and its Spectate/Title Screen choices.
+        world.setGameRule(GameRule.DO_IMMEDIATE_RESPAWN, false);
+        if (changed) world.save();
     }
 
     private void checkAndPrepareStandbyWorld() {
@@ -290,38 +313,28 @@ public class WipeTogether
     }
 
     private void startResetCountdownSequence(Player victim) {
-        String heading = manualReset ? "WORLD RESET!\n" : victim.getName() + " DIED!\n";
-        String explanation = manualReset ? "Resetting the world in " : "The run has been lost. Resetting the world in ";
-        Component alertMessage = ((Component.text("========================================\n", NamedTextColor.DARK_RED, TextDecoration.BOLD).append(Component.text(heading, NamedTextColor.RED, TextDecoration.BOLD))).append(Component.text((explanation + this.countdownSeconds + " seconds...\n"), NamedTextColor.GOLD))).append(Component.text("========================================", NamedTextColor.DARK_RED, TextDecoration.BOLD));
-        Bukkit.broadcast(alertMessage);
+        String victimName = victim == null ? "" : victim.getName();
+        messages().broadcast(manualReset ? "chat.manual-reset" : "chat.death",
+                java.util.Map.of("victim", victimName, "seconds", countdownSeconds, "run", currentCycle));
         new BukkitRunnable() {
-            int remaining;
-
-            {
-                this.remaining = WipeTogether.this.countdownSeconds;
-            }
+            int remaining = countdownSeconds;
 
             public void run() {
-                if (this.remaining > 0) {
-                    NamedTextColor color = this.remaining == 1 ? NamedTextColor.RED : (this.remaining == 2 ? NamedTextColor.GOLD : NamedTextColor.YELLOW);
-                    Title title = Title.title(Component.text(manualReset ? "WORLD RESET!" : "YOU DIED!", NamedTextColor.DARK_RED, TextDecoration.BOLD), Component.text(("New world in " + this.remaining + "..."), color, TextDecoration.BOLD), Title.Times.times(Duration.ofMillis(100L), Duration.ofMillis(800L), Duration.ofMillis(100L)));
+                if (remaining > 0) {
+                    NamedTextColor color = remaining == 1 ? NamedTextColor.RED
+                            : remaining == 2 ? NamedTextColor.GOLD : NamedTextColor.YELLOW;
                     for (Player player : Bukkit.getOnlinePlayers()) {
-                        player.showTitle(title);
-                        player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 0.8f + 0.3f * (float) (WipeTogether.this.countdownSeconds - this.remaining));
+                        String title = manualReset ? "countdown-manual"
+                                : player.getUniqueId().equals(victim.getUniqueId()) ? "countdown-victim" : "countdown-teammate";
+                        messages().showTitle(player, title, java.util.Map.of("victim", victimName,
+                                "seconds", remaining, "run", currentCycle, "countdown_color", color));
+                        player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f,
+                                0.8f + 0.3f * (countdownSeconds - remaining));
                     }
-                    final int displayedRemaining = this.remaining;
-                    Bukkit.getScheduler().runTaskLater(WipeTogether.this, () -> {
-                        for (Player player : Bukkit.getOnlinePlayers()) {
-                            player.showTitle(Title.title(
-                                    Component.text(manualReset ? "WORLD RESET!" : player.getUniqueId().equals(victim.getUniqueId()) ? "YOU DIED!" : victim.getName() + " DIED"),
-                                    Component.text("New world in " + displayedRemaining + "..."),
-                                    Title.Times.times(Duration.ZERO, Duration.ofMillis(900), Duration.ofMillis(100))));
-                        }
-                    }, 1L);
-                    --this.remaining;
+                    --remaining;
                 } else {
-                    this.cancel();
-                    WipeTogether.this.executeHotWorldMigration();
+                    cancel();
+                    executeHotWorldMigration();
                 }
             }
         }.runTaskTimer(this, 0L, 20L);
@@ -405,8 +418,7 @@ public class WipeTogether
         standbyWorldName = null;
         WipeTogetherTimerIntegrated.resetForNewWorld(this);
         for (Player player : Bukkit.getOnlinePlayers()) {
-            Title welcomeTitle = Title.title(Component.text("NEW ATTEMPT!", NamedTextColor.GREEN, TextDecoration.BOLD), Component.text("World generated. Don't die this time.", NamedTextColor.GRAY), Title.Times.times(Duration.ofMillis(200L), Duration.ofSeconds(3L), Duration.ofMillis(500L)));
-            player.showTitle(welcomeTitle);
+            messages().showTitle(player, "welcome", java.util.Map.of("run", currentCycle));
             player.playSound(newSpawn, Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 1.0f);
         }
         updateScoreboardHeader();
@@ -491,7 +503,8 @@ public class WipeTogether
             return;
         }
         this.sharedScoreboard = this.scoreboardManager.getNewScoreboard();
-        this.deathsObjective = this.sharedScoreboard.registerNewObjective("hardcore_deaths", Criteria.DUMMY, Component.text("\u2726 HARDCORE SMP \u2726", NamedTextColor.RED, TextDecoration.BOLD));
+        this.deathsObjective = this.sharedScoreboard.registerNewObjective("hardcore_deaths", Criteria.DUMMY,
+                messages().component("scoreboard.title", java.util.Map.of("run", currentCycle)));
         this.deathsObjective.setDisplaySlot(DisplaySlot.SIDEBAR);
         this.loadScoresFromConfig();
     }
@@ -520,7 +533,7 @@ public class WipeTogether
 
     private void updateScoreboardHeader() {
         if (this.deathsObjective != null) {
-            this.deathsObjective.displayName(Component.text(("DEATHS - RUN #" + this.currentCycle), NamedTextColor.RED, TextDecoration.BOLD));
+            this.deathsObjective.displayName(messages().component("scoreboard.title", java.util.Map.of("run", currentCycle)));
         }
     }
 
@@ -545,14 +558,15 @@ public class WipeTogether
             return AdminCommands.execute(this, sender, command.getName(), args);
         }
         if (!hasAdminPermission(sender)) {
-            sender.sendMessage(Component.text("You do not have permission to run this command.", NamedTextColor.RED));
+            messages().send(sender, "commands.no-permission", java.util.Map.of());
             return true;
         }
         this.getConfig().set("deaths", null);
         this.saveConfig();
         if (this.deathsObjective != null) {
             this.deathsObjective.unregister();
-            this.deathsObjective = this.sharedScoreboard.registerNewObjective("hardcore_deaths", Criteria.DUMMY, Component.text("\u2726 HARDCORE SMP \u2726", NamedTextColor.RED, TextDecoration.BOLD));
+            this.deathsObjective = this.sharedScoreboard.registerNewObjective("hardcore_deaths", Criteria.DUMMY,
+                    messages().component("scoreboard.title", java.util.Map.of("run", currentCycle)));
             this.deathsObjective.setDisplaySlot(DisplaySlot.SIDEBAR);
             for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
                 String uuidStr = onlinePlayer.getUniqueId().toString();
@@ -563,9 +577,8 @@ public class WipeTogether
             this.saveConfig();
         }
         updateScoreboardHeader();
-        Component broadcastReset = Component.text("[WipeTogether] All player death counts have been reset to 0 by an administrator.", NamedTextColor.GREEN);
-        Bukkit.broadcast(broadcastReset);
-        sender.sendMessage(Component.text("[WipeTogether] Scoreboard and config.yml were reset successfully.", NamedTextColor.AQUA));
+        messages().broadcast("commands.deaths-reset-broadcast", java.util.Map.of());
+        messages().send(sender, "commands.deaths-reset-success", java.util.Map.of());
         return true;
     }
 

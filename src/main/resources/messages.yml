@@ -1,0 +1,117 @@
+# ============================================================================
+#                         W I P E T O G E T H E R
+#                           TITLES & MESSAGES
+# ============================================================================
+# QUICK START
+#   1. Stop the server, back up this file, then edit the text below.
+#   2. Keep the quotes around text. Use spaces, not tabs, for indentation.
+#   3. Start the server again. A full restart applies your changes.
+#
+# STYLE: MiniMessage, e.g. '<gold><bold>Hello!</bold></gold>'
+# Close formatting tags. Use <newline> for a line break inside quoted text.
+# A blank message ('') hides that message. Set a title's enabled to false to hide it.
+# Timings are milliseconds: 1000 = 1 second. Allowed range: 0-60000.
+# Missing options use the bundled defaults. Invalid option values or formatting
+# log a warning and use that option's default. Invalid YAML stops plugin startup
+# without changing your file. This file never contains saved run/player records.
+#
+# PLACEHOLDERS (inserted as plain text; player names cannot add formatting)
+#   <prefix>  shared prefix below        <run>     displayed run number
+#   <victim>  player who died            <seconds> countdown remaining
+#   <time>    formatted run/final time   <team>    winning team names
+#   <seed>    winning world seed         <player>  admin command's target player
+#   <count>   admin command's death count
+# Use placeholders only in the sections where they are documented.
+# ============================================================================
+
+prefix: '[WipeTogether] '
+
+# -- 1. CHAT ANNOUNCEMENTS ----------------------------------------------------
+# Countdown announcements: <victim>, <seconds>, <run>, <prefix>
+# Victory announcement: <time>, <team>, <seed>, <run>, <prefix>
+chat:
+  death: |-
+    <dark_red><bold>========================================</bold></dark_red>
+    <red><bold><victim> DIED!</bold></red>
+    <gold>The run has been lost. Resetting the world in <seconds> seconds...</gold>
+    <dark_red><bold>========================================</bold></dark_red>
+  manual-reset: |-
+    <dark_red><bold>========================================</bold></dark_red>
+    <red><bold>WORLD RESET!</bold></red>
+    <gold>Resetting the world in <seconds> seconds...</gold>
+    <dark_red><bold>========================================</bold></dark_red>
+  victory: |-
+    <gold><bold>========================================</bold></gold>
+    <green><bold>HARDCORE COMPLETE!</bold></green>
+    <gold>Run #<run> | Final time: <time></gold>
+    <white>Team: <team>
+    Seed: <seed></white>
+    <gold><bold>========================================</bold></gold>
+
+# -- 2. ON-SCREEN TITLES ------------------------------------------------------
+# Countdown titles: <victim>, <seconds>, <run>, <prefix>
+# <countdown_color> changes from yellow to gold to red as the countdown ends.
+# Welcome title: <run>, <prefix>. Victory title: <run>, <time>, <prefix>.
+# The vanilla Minecraft hardcore death screen is not changed by these titles.
+titles:
+  countdown-victim:
+    enabled: true
+    title: '<dark_red><bold>YOU DIED!</bold></dark_red>'
+    subtitle: '<countdown_color><bold>New world in <seconds>...</bold></countdown_color>'
+    fade-in-ms: 100
+    stay-ms: 800
+    fade-out-ms: 100
+  countdown-teammate:
+    enabled: true
+    title: '<dark_red><bold><victim> DIED</bold></dark_red>'
+    subtitle: '<countdown_color><bold>New world in <seconds>...</bold></countdown_color>'
+    fade-in-ms: 100
+    stay-ms: 800
+    fade-out-ms: 100
+  countdown-manual:
+    enabled: true
+    title: '<dark_red><bold>WORLD RESET!</bold></dark_red>'
+    subtitle: '<countdown_color><bold>New world in <seconds>...</bold></countdown_color>'
+    fade-in-ms: 100
+    stay-ms: 800
+    fade-out-ms: 100
+  welcome:
+    enabled: true
+    title: '<green><bold>NEW ATTEMPT!</bold></green>'
+    subtitle: "<gray>World generated. Don't die this time.</gray>"
+    fade-in-ms: 200
+    stay-ms: 3000
+    fade-out-ms: 500
+  victory:
+    enabled: true
+    title: '<green><bold>HARDCORE COMPLETE!</bold></green>'
+    subtitle: '<gold>Final time: <time></gold>'
+    fade-in-ms: 300
+    stay-ms: 5000
+    fade-out-ms: 700
+
+# -- 3. SCOREBOARD & TAB ------------------------------------------------------
+# Sidebar: <run>, <prefix>. TAB: <run>, <time>, <prefix>.
+# Leave a TAB field blank ('') to show no text in that field.
+scoreboard:
+  title: '<red><bold>DEATHS - RUN #<run></bold></red>'
+tab:
+  header: '<gold><bold>HARDCORE RUN #<run></bold></gold><newline><white>Run Time: </white><green><time></green>'
+  footer-running: '<gray>One death resets the run</gray>'
+  footer-complete: '<gold><bold>HARDCORE COMPLETE!</bold></gold>'
+
+# -- 4. ADMIN COMMAND FEEDBACK -----------------------------------------------
+# All entries: <prefix>. run-set: <run>. deaths-set: <player>, <count>.
+commands:
+  no-permission: '<red>You do not have permission to run this command.</red>'
+  reset-in-progress: '<red>A world reset is already in progress. Wait for it to finish.</red>'
+  usage-resetruns: '<red>Usage: /resetruns</red>'
+  usage-setrun: '<red>Usage: /setrun \<number> (1 to 2147483647)</red>'
+  usage-setdeaths: '<red>Usage: /setdeaths \<player> \<number> (0 to 2147483647)</red>'
+  usage-resetworld: '<red>Usage: /resetworld</red>'
+  unknown-player: '<red>Unknown player. Use an online player or someone who has joined this server.</red>'
+  run-set: '<green><prefix>Run number set to <run>.</green>'
+  deaths-set: "<green><prefix><player>'s death count set to <count>.</green>"
+  reset-started: '<green><prefix>World reset started. Run number and death counts will stay the same.</green>'
+  deaths-reset-broadcast: '<green><prefix>All player death counts have been reset to 0 by an administrator.</green>'
+  deaths-reset-success: '<aqua><prefix>Scoreboard and config.yml were reset successfully.</aqua>'

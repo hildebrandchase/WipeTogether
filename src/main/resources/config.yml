@@ -1,22 +1,37 @@
-# ================================================================
-# WIPETOGETHER — TEAM HARDCORE RESET CONFIGURATION
-# ================================================================
+# ============================================================================
+#                         W I P E T O G E T H E R
+#                              GAME SETTINGS
+# ============================================================================
+# Stop the server before editing. Back up this file and restart to apply changes.
+# Use spaces, not tabs. Keep quotes around text.
+#
+# Looking for titles, colors, chat messages, or the TAB timer text?
+# Open messages.yml next to this file. It has examples and placeholder help.
+#
+# server.properties: hardcore=true and difficulty=hard
+# ============================================================================
 
 settings:
-  # Prefix for active worlds
+  # WORLD NAMES — preserve these when upgrading an existing server.
+  # Letters, numbers, underscores, or hyphens only; at most 80 characters.
   world-prefix: "wipetogether_world_"
 
   # Prefix for the standby world kept preloaded
   standby-prefix: "wipetogether_standby_"
 
-  # Exact number of seconds in the dramatic countdown after a death
+  # COUNTDOWN — seconds before the team starts a fresh world (minimum: 1).
+  # The victim can use the vanilla death screen or spectate until the transfer.
   countdown-seconds: 3
 
-  # Delay after teleporting before pregenerating the next standby world.
-  # Helps reduce CPU spikes while players load the new chunks.
+  # STANDBY DELAY — seconds after a reset before preparing the next world.
+  # Minimum: 5. Increase this to spread out world-generation load.
   cooldown-before-standby-prep-seconds: 15
 
-# Internal cycle state (updated automatically while the server is running)
+# ============================================================================
+# SAVED GAME DATA — managed automatically; do not edit during normal use.
+# Keep this section when upgrading. Deleting it can lose the active run/records.
+# Titles and messages belong in messages.yml, never in this section.
+# ============================================================================
 state:
   current-cycle: 1
   active-world: "world"

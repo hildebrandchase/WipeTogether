@@ -17,11 +17,13 @@ final class ConfigStore {
     static YamlConfiguration load(Path file, InputStream defaults) throws IOException, InvalidConfigurationException {
         YamlConfiguration config = new YamlConfiguration();
         try (defaults) {
-            if (Files.exists(file)) config.load(file.toFile());
+            boolean existing = Files.exists(file);
+            if (existing) config.load(file.toFile());
             if (defaults != null) {
                 var reader = new InputStreamReader(defaults, StandardCharsets.UTF_8);
                 YamlConfiguration bundled = new YamlConfiguration();
                 bundled.load(reader);
+                if (!existing) config.loadFromString(bundled.saveToString());
                 config.setDefaults(bundled);
             }
         }

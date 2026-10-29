@@ -1,4 +1,27 @@
-﻿# Changelog
+# Changelog
+
+## 1.2.1 — Unreleased
+
+This is the working update after the initial 1.2.0 release. Publication is pending maintainer confirmation.
+
+### Configurable presentation
+
+- Add a separate, commented `messages.yml` for chat announcements, countdown/victim/teammate/manual-reset titles, welcome and victory titles, sidebar title, TAB text, and admin feedback.
+- Support MiniMessage colors and styles, safe text placeholders, configurable title timings, individual title toggles, and blank chat messages.
+- Validate presentation settings at startup; use defaults for invalid option values or formatting without interrupting resets. Preserve malformed YAML and existing custom files.
+- Create the presentation file automatically for existing installations without moving or clearing saved runs, players, deaths, or wins.
+- Replace the next-tick hardcoded countdown overlay with one configured title per audience so custom titles are not overwritten.
+- Refresh the gameplay settings layout, preserve comments when creating configuration files, and add a settings guide and examples.
+- Verify the combined update with 84 automated tests covering presentation settings and gameplay regression paths. No new client visual playtest is claimed for configurable presentation.
+
+### Hardcore behavior
+
+- Change the recommended server setting to `hardcore=true`.
+- Create the Overworld, Nether, and End with hardcore enabled and Hard difficulty.
+- Repair hardcore settings on restored run worlds and retained default dimensions before players log in, preserving terrain, seeds, and records.
+- Preserve the vanilla hardcore death screen and Spectate World choice by disabling immediate respawn. At the next-world transfer, respawn anyone still dead and restore survival after teleporting.
+- Support returning to the current run after leaving from the death screen or disconnecting as a spectator. Rejoining before the countdown finishes preserves the old-run state until transfer.
+- Add regression tests for hardcore creation, existing-world repair, dead-player migration, and death-screen/spectator disconnect and rejoin paths.
 
 ## 1.2.0 — WipeTogether
 

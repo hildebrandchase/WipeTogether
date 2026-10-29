@@ -3,8 +3,6 @@ package com.wipetogether;
 import java.util.*;
 import java.util.stream.Stream;
 
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
@@ -17,53 +15,53 @@ final class AdminCommands {
         command = command.toLowerCase(Locale.ROOT);
         if (!COMMANDS.contains(command)) return false;
         if (!WipeTogether.hasAdminPermission(sender)) {
-            error(sender, "You do not have permission to run this command.");
+            plugin.messages().send(sender, "commands.no-permission", Map.of());
             return true;
         }
         if (!command.equals("setdeaths") && plugin.resetInProgress()) {
-            error(sender, "A world reset is already in progress. Wait for it to finish.");
+            plugin.messages().send(sender, "commands.reset-in-progress", Map.of());
             return true;
         }
         switch (command) {
             case "resetruns" -> {
                 if (args.length != 0) {
-                    error(sender, "Usage: /resetruns");
+                    plugin.messages().send(sender, "commands.usage-resetruns", Map.of());
                     break;
                 }
                 plugin.setCurrentCycle(1);
-                success(sender, "Run number set to 1.");
+                plugin.messages().send(sender, "commands.run-set", Map.of("run", 1));
             }
             case "setrun" -> {
                 Integer number = args.length == 1 ? parse(args[0], 1) : null;
                 if (number == null) {
-                    error(sender, "Usage: /setrun <number> (1 to 2147483647)");
+                    plugin.messages().send(sender, "commands.usage-setrun", Map.of());
                     break;
                 }
                 plugin.setCurrentCycle(number);
-                success(sender, "Run number set to " + number + ".");
+                plugin.messages().send(sender, "commands.run-set", Map.of("run", number));
             }
             case "setdeaths" -> {
                 Integer count = args.length == 2 ? parse(args[1], 0) : null;
                 if (count == null) {
-                    error(sender, "Usage: /setdeaths <player> <number> (0 to 2147483647)");
+                    plugin.messages().send(sender, "commands.usage-setdeaths", Map.of());
                     break;
                 }
                 Identity player = findPlayer(plugin, args[0]);
                 if (player == null) {
-                    error(sender, "Unknown player. Use an online player or someone who has joined this server.");
+                    plugin.messages().send(sender, "commands.unknown-player", Map.of());
                     break;
                 }
                 plugin.setDeathCount(player.id(), player.name(), count);
-                success(sender, player.name() + "'s death count set to " + count + ".");
+                plugin.messages().send(sender, "commands.deaths-set", Map.of("player", player.name(), "count", count));
             }
             case "resetworld" -> {
                 if (args.length != 0) {
-                    error(sender, "Usage: /resetworld");
+                    plugin.messages().send(sender, "commands.usage-resetworld", Map.of());
                     break;
                 }
                 if (plugin.beginManualReset())
-                    success(sender, "World reset started. Run number and death counts will stay the same.");
-                else error(sender, "A world reset is already in progress.");
+                    plugin.messages().send(sender, "commands.reset-started", Map.of());
+                else plugin.messages().send(sender, "commands.reset-in-progress", Map.of());
             }
         }
         return true;
@@ -118,11 +116,4 @@ final class AdminCommands {
         return List.of();
     }
 
-    private static void error(CommandSender sender, String text) {
-        sender.sendMessage(Component.text(text, NamedTextColor.RED));
-    }
-
-    private static void success(CommandSender sender, String text) {
-        sender.sendMessage(Component.text("[WipeTogether] " + text, NamedTextColor.GREEN));
-    }
 }

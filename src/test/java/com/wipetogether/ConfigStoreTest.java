@@ -15,6 +15,15 @@ class ConfigStoreTest {
     @TempDir
     Path root;
 
+    @Test void freshConfigurationRetainsTheBundledComments() throws Exception {
+        String defaults = "# Game settings\nsettings:\n  # Seconds before a reset\n  countdown-seconds: 3\n";
+        var stream = new ByteArrayInputStream(defaults.getBytes(StandardCharsets.UTF_8));
+        var config = ConfigStore.load(root.resolve("new-config.yml"), stream);
+        assertEquals(3, config.getInt("settings.countdown-seconds"));
+        assertTrue(config.saveToString().contains("# Game settings"));
+        assertTrue(config.saveToString().contains("# Seconds before a reset"));
+    }
+
     @Test
     void malformedYamlIsRejectedWithoutChangingOriginal() throws Exception {
         Path file = root.resolve("config.yml");

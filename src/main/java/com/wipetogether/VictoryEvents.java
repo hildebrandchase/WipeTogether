@@ -1,6 +1,5 @@
 package com.wipetogether;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.logging.Level;
@@ -12,10 +11,6 @@ import org.bukkit.event.entity.*;
 import org.bukkit.event.player.*;
 import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.persistence.PersistentDataType;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextDecoration;
-import net.kyori.adventure.title.Title;
 
 final class VictoryEvents implements Listener {
     static final NamespacedKey FIREWORK_TAG = new NamespacedKey("wipetogether", "victory_firework");
@@ -106,11 +101,8 @@ final class VictoryEvents implements Listener {
         plugin.saveConfig();
         String time = WipeTogetherTimerIntegrated.formatTime(elapsed / 1000L);
         String names = team.isEmpty() ? firstReturner.getName() : String.join(", ", team.values().stream().map(Object::toString).toList());
-        Bukkit.broadcast(Component.text("========================================\n", NamedTextColor.GOLD, TextDecoration.BOLD)
-                .append(Component.text("HARDCORE COMPLETE!\n", NamedTextColor.GREEN, TextDecoration.BOLD))
-                .append(Component.text("Run #" + plugin.currentCycle() + " | Final time: " + time + "\n", NamedTextColor.GOLD))
-                .append(Component.text("Team: " + names + "\nSeed: " + record.get("seed") + "\n", NamedTextColor.WHITE))
-                .append(Component.text("========================================", NamedTextColor.GOLD, TextDecoration.BOLD)));
+        plugin.messages().broadcast("chat.victory", Map.of("run", plugin.currentCycle(), "time", time,
+                "team", names, "seed", record.get("seed")));
         for (Player player : Bukkit.getOnlinePlayers()) showVictory(player, elapsed);
         for (int burst = 0; burst < 3; burst++) {
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
@@ -128,9 +120,8 @@ final class VictoryEvents implements Listener {
     }
 
     private void showVictory(Player player, long millis) {
-        player.showTitle(Title.title(Component.text("HARDCORE COMPLETE!", NamedTextColor.GREEN, TextDecoration.BOLD),
-                Component.text("Final time: " + WipeTogetherTimerIntegrated.formatTime(millis / 1000L), NamedTextColor.GOLD),
-                Title.Times.times(Duration.ofMillis(300), Duration.ofSeconds(5), Duration.ofMillis(700))));
+        plugin.messages().showTitle(player, "victory", Map.of("run", plugin.currentCycle(),
+                "time", WipeTogetherTimerIntegrated.formatTime(millis / 1000L)));
         player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
     }
 
